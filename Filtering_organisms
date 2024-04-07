@@ -1,0 +1,78 @@
+use strict;
+use warnings;
+use Text::CSV;
+
+my $input_file = "SRA_DATA.csv";
+my $output_file = "filtered_data.csv"; # Change this to your desired output file name
+my $output_selected_columns_file = "selected_columns_data.csv"; # Output file for selected columns
+my $bases_column_name = "Bases";
+my $tissue_column_name = "tissue";
+
+my $csv = Text::CSV->new({ binary => 1, auto_diag => 1, sep_char => ',' });
+
+open my $in_fh, '<', $input_file or die "Could not open input file: $!";
+open my $out_fh, '>', $output_file or die "Could not open output file: $!";
+open my $selected_columns_fh, '>', $output_selected_columns_file or die "Could not open selected columns output file: $!";
+
+my $header = $csv->getline($in_fh); # Read and store the header line
+
+if (defined $header) {
+    my $bases_column_index = -1;
+    my $tissue_column_index = -1;
+
+    # Create an array to hold the column indices of the selected columns
+    my @selected_column_indices;
+    my @selected_column_names = ("Run", "BioProject", "BioSample", "Experiment", "LibrarySelection", "Organism", "AvgSpotLen", "Bases", "Bytes", "tissue");
+
+    # Find the column indices dynamically for the selected columns
+    for my $i (0..$#{$header}) {
+        if (lc($header->[$i]) eq lc($bases_column_name)) {
+            $bases_column_index = $i;
+        }
+	if (lc($header->[$i]) eq lc($tissue_column_name)) {
+            $tissue_column_index = $i;
+        }
+
+	for my $j (0..$#selected_column_names) {
+            if (lc($header->[$i]) eq lc($selected_column_names[$j])) {
+                push @selected_column_indices, $i;
+            }
+	}
+    }
+
+   if ($bases_column_index == -1 || $tissue_column_index == -1) {
+        die "Column names not found in the header.";
+    }
+
+    # Print the header line to the output file
+    print $out_fh join("\t", @$header), "\n";
+    print $selected_columns_fh join("\t", @selected_column_names), "\n";
+
+    while (my $row = $csv->getline($in_fh)) {
+        my $tissue = $row->[$tissue_column_index];
+        my $bases = $row->[$bases_column_index];
+
+        # Skip rows that don't meet the criteria
+        next if $bases <= 100_000_000_000; # Skip rows with "Bases" <= 100,000,000,000
+        next if $tissue =~ /:|blood lymphoblastoid|missing|peripheral blood monocyte cells|bone marrow derived macrophages \(BMDM\)|^$/i;
+
+        # Extract and print the selected columns to the selected columns file
+        my @selected_data;
+        foreach my $index (@selected_column_indices) {
+            push @selected_data, $row->[$index];
+        }
+	print $selected_columns_fh join("\t", @selected_data), "\n";
+	
+        # Print the entire row to the filtered data file
+        print $out_fh join("\t", @$row), "\n";
+    }
+} else {
+    die "Header line not found in the input file.";
+}
+
+close $in_fh;
+close $out_fh;
+close $selected_columns_fh;
+
+print "Filtered data saved to $output_file\n";
+print "Selected columns data saved to $output_selected_columns_file\n";
